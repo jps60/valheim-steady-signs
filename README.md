@@ -1,6 +1,8 @@
-# Deliberate Interact 1.1.1
+# Steady Signs 1.2.0
 
 A client-side Valheim mod by Swiftfingers that prevents accidental edits and equipment removal.
+
+Steady Signs was previously called Deliberate Interact. Remove the old local mod entry before importing Steady Signs.
 
 | Action | Default control |
 | --- | --- |
