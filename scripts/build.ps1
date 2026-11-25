@@ -27,7 +27,7 @@ try {
         author = $author
         version_number = $version
         website_url = 'https://github.com/jps60/valheim-deliberate-interact'
-        description = 'Shift + E edits signs and portal tags. Hold E to take equipment off armor stands.'
+        description = 'Shift + E edits signs and portal tags. Hold E to mount or remove items on armor stands and item stands.'
         dependencies = @('denikson-BepInExPack_Valheim-5.4.2360')
     }
     [IO.File]::WriteAllText((Join-Path $package.FullName 'manifest.json'),
