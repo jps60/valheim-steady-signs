@@ -1,4 +1,4 @@
-# Deliberate Interact 1.1.0
+# Deliberate Interact 1.1.1
 
 A client-side Valheim mod by Swiftfingers that prevents accidental edits and equipment removal.
 
@@ -7,13 +7,11 @@ A client-side Valheim mod by Swiftfingers that prevents accidental edits and equ
 | Edit a sign | Shift + E |
 | Rename a portal tag | Shift + E |
 | Take equipment off an armor stand | Hold E |
-| Mount an item on an armor stand or item stand | Hold E |
+| Mount an item on an armor stand or item stand | Hold its hotbar key (1–8) |
 
-Signs and portals follow the same Alternate Use and Use bindings as tame renaming. Stand interactions use Valheim's item-stand hold timing.
+Aim at a stand and hold the key for the exact hotbar slot you want to mount. A tap while aiming at the stand does nothing. Hotbar keys work as usual away from stands. Hold E removes displayed equipment, and the separate armor-stand pose control keeps its normal binding.
 
-For mounting, the game checks your right hand, then your left hand, then hotbar slots 1–8 for a compatible item. The hover prompt names the item that will mount. If a shared armor-stand control can mount an item in a free slot, mounting takes priority. Put away compatible items or move them off the hotbar to take equipment off that control. An occupied item stand continues to use Hold E for removal.
-
-Direct hotbar mounting and armor-stand pose controls still work. The vanilla editing dialogs, access checks, and portal travel are preserved.
+Signs and portals follow the same Alternate Use and Use bindings as tame renaming. The vanilla editing dialogs, access checks, and portal travel are preserved.
 
 Install BepInExPack Valheim, then import the release ZIP as a local mod in r2modman and launch Valheim modded. Only the client needs the mod.
 

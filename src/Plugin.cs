@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using BepInEx;
 using HarmonyLib;
+using UnityEngine;
 
 namespace DeliberateInteract
 {
@@ -10,20 +11,24 @@ namespace DeliberateInteract
     public sealed class Plugin : BaseUnityPlugin
     {
         private const string Id = "com.swiftfingers.deliberateinteract";
-        private const string Version = "1.1.0";
+        private const string Version = "1.1.1";
 
-        private static bool standHoldUsed;
+        private const float MountHoldSeconds = 0.2f;
+        private static PendingMount pendingMount;
 
-        [HarmonyPatch(typeof(Player), "Update")]
-        private static class StandHold
+        private static readonly Func<Player, bool> CanTakeInput = AccessTools.MethodDelegate<Func<Player, bool>>(
+            AccessTools.Method(typeof(Player), "TakeInput"), virtualCall: false);
+        private static readonly Action<Humanoid, GameObject> AnimateUse = AccessTools.MethodDelegate<Action<Humanoid, GameObject>>(
+            AccessTools.Method(typeof(Humanoid), "DoInteractAnimation"));
+
+        private sealed class PendingMount
         {
-            private static void Prefix(Player __instance)
-            {
-                if (__instance == Player.m_localPlayer &&
-                    (ZInput.GetButtonDown("Use") || ZInput.GetButtonDown("JoyUse") ||
-                     (!ZInput.GetButton("Use") && !ZInput.GetButton("JoyUse"))))
-                    standHoldUsed = false;
-            }
+            public Player Player;
+            public MonoBehaviour Stand;
+            public ItemDrop.ItemData Item;
+            public int Index;
+            public string Button;
+            public float StartedAt;
         }
 
         private void Awake()
@@ -71,166 +76,124 @@ namespace DeliberateInteract
                     + Localization.instance.Localize("\n" + binding + " " + action);
         }
 
-        private static ArmorStand GetArmorStand(Switch control)
+        private static bool IsArmorSlot(Switch control)
         {
             // The equipment switches use the armor stand's UseItem callback.
             // The separate pose switch is deliberately excluded.
             ArmorStand stand = control.m_onUse?.Target as ArmorStand ?? control.GetComponentInParent<ArmorStand>();
             if (stand == null || control == stand.m_changePoseSwitch)
-                return null;
+                return false;
 
             foreach (ArmorStand.ArmorStandSlot slot in stand.m_slots)
             {
                 if (slot.m_switch == control)
-                    return stand;
-            }
-            return null;
-        }
-
-        private static ItemDrop.ItemData FindItem(Humanoid character, Func<ItemDrop.ItemData, bool> canAttach)
-        {
-            if (character.RightItem != null && canAttach(character.RightItem))
-                return character.RightItem;
-            if (character.LeftItem != null && canAttach(character.LeftItem))
-                return character.LeftItem;
-            for (int i = 0; i < 8; ++i)
-            {
-                var item = character.GetInventory().GetItemAt(i, 0);
-                if (item != null && canAttach(item))
-                    return item;
-            }
-            return null;
-        }
-
-        private static string HoldBinding => ZInput.IsGamepadActive()
-            ? "<b>$ui_hold $KEY_Use</b>" : "[<color=yellow><b>$ui_hold $KEY_Use</b></color>]";
-
-        private static void AddMountHint(ref string text, ItemDrop.ItemData item)
-        {
-            if (item != null)
-                text += Localization.instance.Localize("\n" + HoldBinding + " $piece_itemstand_attach (" + item.m_shared.m_name + ")");
-        }
-
-        [HarmonyPatch(typeof(ItemStand), nameof(ItemStand.Interact))]
-        private static class ItemStandInteraction
-        {
-            private static bool Prefix(ItemStand __instance, Humanoid user, bool hold, bool alt, ref bool __result)
-            {
-                if (user != Player.m_localPlayer || __instance.m_guardianPower != null)
                     return true;
-                if (__instance.HaveAttachment())
+            }
+            return false;
+        }
+
+        private static MonoBehaviour GetMountTarget(GameObject hovered)
+        {
+            if (!hovered || hovered.GetComponentInParent<Hoverable>() == null)
+                return null;
+            var target = hovered.GetComponentInParent<Interactable>();
+            if (target is ItemStand itemStand && itemStand.m_guardianPower == null)
+                return itemStand;
+            return target is Switch control && IsArmorSlot(control) ? control : null;
+        }
+
+        [HarmonyPatch(typeof(Player), nameof(Player.UseHotbarItem))]
+        private static class StartMountHold
+        {
+            private static bool Prefix(Player __instance, int index)
+            {
+                if (__instance != Player.m_localPlayer || index < 1 || index > 8)
+                    return true;
+                string button = $"Hotbar{index}";
+                if (!ZInput.GetButtonDown(button))
                 {
-                    if (!hold || alt || !__instance.m_canBeRemoved)
+                    button += "Alt";
+                    if (!ZInput.GetButtonDown(button))
                         return true;
-                    if (standHoldUsed)
-                        return false;
-                    standHoldUsed = true;
-                    return true;
                 }
-
-                if (!hold || standHoldUsed)
-                    return false;
-                standHoldUsed = true;
-                if (__instance.m_autoAttach && __instance.m_supportedItems.Count == 1)
+                var stand = GetMountTarget(__instance.GetHoverObject());
+                if (!stand)
                     return true;
-                if (PrivateArea.CheckAccess(__instance.transform.position))
+                var item = __instance.GetInventory().GetItemAt(index - 1, 0);
+                pendingMount = item == null ? null : new PendingMount
                 {
-                    var item = FindStandItem(__instance, user);
-                    if (item != null)
-                        __result = __instance.UseItem(user, item);
-                }
+                    Player = __instance,
+                    Stand = stand,
+                    Item = item,
+                    Index = index,
+                    Button = button,
+                    StartedAt = Time.unscaledTime
+                };
                 return false;
             }
         }
 
-        private static readonly Func<ItemStand, ItemDrop.ItemData, bool> ItemStandCanAttach =
-            AccessTools.MethodDelegate<Func<ItemStand, ItemDrop.ItemData, bool>>(
-                AccessTools.Method(typeof(ItemStand), "CanAttach"), virtualCall: false);
+        [HarmonyPatch(typeof(Player), "Update")]
+        private static class FinishMountHold
+        {
+            private static void Postfix(Player __instance)
+            {
+                var mount = pendingMount;
+                if (mount == null || __instance != Player.m_localPlayer)
+                    return;
+                var hovered = __instance.GetHoverObject();
+                if (mount.Player != __instance || !mount.Stand || !ZInput.GetButton(mount.Button) ||
+                    !CanTakeInput(__instance) || Hud.InRadial() ||
+                    GetMountTarget(hovered) != mount.Stand ||
+                    __instance.GetInventory().GetItemAt(mount.Index - 1, 0) != mount.Item)
+                {
+                    pendingMount = null;
+                    return;
+                }
+                if (Time.unscaledTime - mount.StartedAt < MountHoldSeconds)
+                    return;
 
-        private static ItemDrop.ItemData FindStandItem(ItemStand stand, Humanoid user) =>
-            FindItem(user, item => item.m_dropPrefab != null && ItemStandCanAttach(stand, item));
+                pendingMount = null;
+                if (mount.Stand is ItemStand && !PrivateArea.CheckAccess(mount.Stand.transform.position))
+                    return;
+                if (((Interactable)mount.Stand).UseItem(__instance, mount.Item))
+                    AnimateUse(__instance, hovered);
+            }
+        }
+
+        private static void ShowHoldHotbar(ref string text)
+        {
+            if (ZInput.IsGamepadActive())
+                return;
+            const string hint = "[<color=yellow><b>$KEY_HotbarUse</b></color>] $piece_itemstand_attach";
+            text = text.Replace(Localization.instance.Localize(hint),
+                Localization.instance.Localize(hint.Replace("$KEY_HotbarUse", "$ui_hold $KEY_HotbarUse")));
+        }
 
         [HarmonyPatch(typeof(ItemStand), nameof(ItemStand.GetHoverText))]
-        private static class ItemStandHint
+        private static class ItemStandMountHint
         {
             private static void Postfix(ItemStand __instance, ref string __result)
             {
-                if (!Player.m_localPlayer || __instance.m_guardianPower != null || __instance.HaveAttachment())
-                    return;
-                if (__instance.m_autoAttach && __instance.m_supportedItems.Count == 1)
-                    ReplaceUseHint(ref __result, "$piece_itemstand_attach", HoldBinding);
-                else if (HasHotbarHint(__result))
-                    AddMountHint(ref __result, FindStandItem(__instance, Player.m_localPlayer));
+                if (__instance.m_guardianPower == null)
+                    ShowHoldHotbar(ref __result);
             }
-        }
-
-        private static bool HasHotbarHint(string text) => text.Contains(
-            Localization.instance.Localize("\n[<color=yellow><b>$KEY_HotbarUse</b></color>] $piece_itemstand_attach"));
-
-        private static bool HasArmorAttachment(ArmorStand stand, Switch control)
-        {
-            for (int i = 0; i < stand.m_slots.Count; ++i)
-                if (stand.m_slots[i].m_switch == control && stand.HaveAttachment(i))
-                    return true;
-            return false;
-        }
-
-        private static ItemDrop.ItemData FindArmorItem(ArmorStand stand, Switch control, Humanoid user) =>
-            FindItem(user, item =>
-            {
-                var type = item.m_shared.m_attachOverride != ItemDrop.ItemData.ItemType.None
-                    ? item.m_shared.m_attachOverride : item.m_shared.m_itemType;
-                for (int i = 0; i < stand.m_slots.Count; ++i)
-                {
-                    var slot = stand.m_slots[i];
-                    if (slot.m_switch == control && (slot.m_supportedTypes.Count == 0 || slot.m_supportedTypes.Contains(type)))
-                        return !stand.HaveAttachment(i) && HasArmorVisual(item);
-                }
-                return false;
-            });
-
-        private static bool HasArmorVisual(ItemDrop.ItemData item)
-        {
-            var type = item.m_shared.m_itemType;
-            if (type == ItemDrop.ItemData.ItemType.Chest || type == ItemDrop.ItemData.ItemType.Legs)
-                return true;
-            var prefab = item.m_dropPrefab;
-            if (prefab == null)
-                return false;
-            for (int i = 0; i < prefab.transform.childCount; ++i)
-            {
-                string name = prefab.transform.GetChild(i).name;
-                if (name == "attach" || name == "attach_skin")
-                    return true;
-            }
-            return false;
         }
 
         [HarmonyPatch(typeof(Switch), nameof(Switch.Interact))]
-        private static class ArmorInteraction
+        private static class ArmorRemoval
         {
-            private static bool Prefix(Switch __instance, Humanoid character, ref bool hold, ref bool __result)
+            private static bool Prefix(Switch __instance, ref bool hold)
             {
-                var stand = GetArmorStand(__instance);
-                if (stand == null || character != Player.m_localPlayer)
+                if (!IsArmorSlot(__instance))
                     return true;
-                if (!hold || standHoldUsed)
+                if (!hold)
                     return false;
-                standHoldUsed = true;
 
-                var item = FindArmorItem(stand, __instance, character);
-                if (item != null)
-                {
-                    __result = __instance.UseItem(character, item);
-                    return false;
-                }
-                if (HasArmorAttachment(stand, __instance))
-                {
-                    // Player.Interact has already applied the game’s hold delay.
-                    hold = false;
-                    return true;
-                }
-                return false;
+                // Player.Interact already applies the vanilla item-stand hold delay.
+                // Run the normal switch callback without Switch's separate repeat timer.
+                hold = false;
+                return true;
             }
         }
 
@@ -239,21 +202,12 @@ namespace DeliberateInteract
         {
             private static void Postfix(Switch __instance, ref string __result)
             {
-                var stand = GetArmorStand(__instance);
-                if (stand == null)
+                if (!IsArmorSlot(__instance))
                     return;
-                if (!Player.m_localPlayer || !HasHotbarHint(__result))
-                    return;
-                var item = FindArmorItem(stand, __instance, Player.m_localPlayer);
-                if (item == null && HasArmorAttachment(stand, __instance))
-                    ReplaceUseHint(ref __result, "$piece_itemstand_take", HoldBinding);
-                else
-                {
-                    string takeHint = Localization.instance.Localize("\n[<color=yellow><b>$KEY_Use</b></color>] $piece_itemstand_take");
-                    if (__result.EndsWith(takeHint, StringComparison.Ordinal))
-                        __result = __result.Substring(0, __result.Length - takeHint.Length);
-                    AddMountHint(ref __result, item);
-                }
+                ShowHoldHotbar(ref __result);
+                string binding = ZInput.IsGamepadActive()
+                    ? "<b>$ui_hold $KEY_Use</b>" : "[<color=yellow><b>$ui_hold $KEY_Use</b></color>]";
+                ReplaceUseHint(ref __result, "$piece_itemstand_take", binding);
             }
         }
     }
