@@ -19,4 +19,22 @@ Install BepInExPack Valheim, then import the release ZIP as a local mod in r2mod
 
 To build against a local game installation, run `scripts/build.ps1 -ValheimDirectory 'C:/path/to/Valheim'`.
 
+## Screenshots
+
+**Sign** · Press **Shift + E** to edit the text.
+
+![A wooden storage sign showing the Shift + E prompt](https://raw.githubusercontent.com/jps60/valheim-steady-signs/main/docs/screenshots/sign.jpg)
+
+**Portal** · Press **Shift + E** to set the portal tag.
+
+![A connected portal showing the Shift + E Set tag prompt](https://raw.githubusercontent.com/jps60/valheim-steady-signs/main/docs/screenshots/portal.jpg)
+
+**Item stand** · Hold the item's hotbar key (**1–8**) to attach it.
+
+![A tabletop item stand showing the Hold 1–8 Attach item prompt](https://raw.githubusercontent.com/jps60/valheim-steady-signs/main/docs/screenshots/item-stand.jpg)
+
+**Armor stand** · Hold a hotbar key (**1–8**) to attach gear or **E** to take it off.
+
+![An armor stand showing Hold 1–8 to attach and Hold E to take an item](https://raw.githubusercontent.com/jps60/valheim-steady-signs/main/docs/screenshots/armor-stand.jpg)
+
 Inspired by [PreventAccidentalInteraction](https://github.com/PhantomGamers/Valheim-PreventAccidentalInteraction) by PhantomGamers.
