@@ -26,7 +26,7 @@ try {
         name = 'SteadySigns'
         author = $author
         version_number = $version
-        website_url = 'https://github.com/jps60/valheim-deliberate-interact'
+        website_url = 'https://github.com/jps60/valheim-steady-signs'
         description = 'Shift + E edits signs and portal tags. Hold 1-8 to mount stand items and Hold E to remove them.'
         dependencies = @('denikson-BepInExPack_Valheim-5.4.2360')
     }

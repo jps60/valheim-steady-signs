@@ -22,7 +22,7 @@ $remoteHeads = @($remote | ForEach-Object { ($_ -split '\s+')[0] })
 if ($LASTEXITCODE -ne 0 -or $remoteHeads -notcontains $head) { throw 'Push the matching release commit/tag before publishing.' }
 $credentialFields = @{}
 if ($env:GITHUB_ACTIONS -eq 'true' -and $env:GITHUB_TOKEN) {
-    if ($env:GITHUB_REPOSITORY -cne 'jps60/valheim-deliberate-interact') { throw 'Unexpected CI repository.' }
+    if ($env:GITHUB_REPOSITORY -cne 'jps60/valheim-steady-signs') { throw 'Unexpected CI repository.' }
     $credentialFields.password = $env:GITHUB_TOKEN
 } else {
     $credentialResult = "protocol=https`nhost=github.com`n`n" | git -c credential.interactive=never credential fill 2>$null
@@ -33,7 +33,7 @@ if ($env:GITHUB_ACTIONS -eq 'true' -and $env:GITHUB_TOKEN) {
 }
 if (-not $credentialFields.password) { throw 'GitHub authentication did not supply a credential.' }
 $headers = @{ Authorization = ('Bearer ' + $credentialFields.password); Accept = 'application/vnd.github+json'; 'User-Agent' = 'DeliberateInteract-release'; 'X-GitHub-Api-Version' = '2022-11-28' }
-$repoApi = 'https://api.github.com/repos/jps60/valheim-deliberate-interact'
+$repoApi = 'https://api.github.com/repos/jps60/valheim-steady-signs'
 if ($env:GITHUB_ACTIONS -ne 'true') {
     $account = Invoke-RestMethod -Uri 'https://api.github.com/user' -Headers $headers
     if ($account.login -ne 'jps60') { throw 'Unexpected authenticated GitHub account.' }
