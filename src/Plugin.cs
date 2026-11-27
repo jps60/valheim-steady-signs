@@ -11,7 +11,7 @@ namespace DeliberateInteract
     public sealed class Plugin : BaseUnityPlugin
     {
         private const string Id = "com.swiftfingers.deliberateinteract";
-        private const string Version = "1.2.0";
+        private const string Version = "1.2.1";
 
         private const float MountHoldSeconds = 0.2f;
         private static PendingMount pendingMount;

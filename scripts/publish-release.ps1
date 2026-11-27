@@ -12,7 +12,7 @@ if (-not (Test-Path -LiteralPath $archive)) { throw 'Build archive is missing.' 
 $archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
 $archiveSize = (Get-Item -LiteralPath $archive).Length
 $notes = if ($NotesPath) { [IO.File]::ReadAllText([IO.Path]::GetFullPath($NotesPath)) } else {
-    "Steady Signs $Version (formerly Deliberate Interact). Remove the old local mod entry before importing the attached ZIP in r2modman. Shift + E edits signs and portal tags. Hold the item's hotbar key (1-8) to mount it, or Hold E to remove it."
+    "Steady Signs $Version. Import the attached ZIP in r2modman. Shift + E edits signs and portal tags. Hold the item's hotbar key (1-8) to mount it, or Hold E to remove it."
 }
 $notes += "`r`n`r`nSHA-256: $archiveHash"
 $head = (git rev-parse HEAD).Trim()
