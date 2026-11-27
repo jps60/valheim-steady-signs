@@ -1,0 +1,5 @@
+[general]
+repository = "https://thunderstore.io"
+
+[publish]
+communities = ["valheim"]

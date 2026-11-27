@@ -1,0 +1,111 @@
+name: Publish storefronts
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing stable GitHub release tag
+        required: true
+        type: string
+      destination:
+        description: Storefront to publish or verify only
+        type: choice
+        required: true
+        default: verify
+        options:
+          - verify
+          - both
+          - thunderstore
+          - nexus
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Download and verify GitHub release
+        id: package
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+        run: |
+          bash scripts/prepare-storefront-release.sh "$RELEASE_TAG" storefront
+          printf 'version=%s\n' "${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: storefront-packages
+          path: storefront/*.zip
+          if-no-files-found: error
+
+  thunderstore:
+    needs: prepare
+    if: github.event_name == 'release' || inputs.destination == 'both' || inputs.destination == 'thunderstore'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: thunderstore-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: storefront-packages
+          path: storefront
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Thunderstore CLI
+        run: dotnet tool install --tool-path "$RUNNER_TEMP/tcli" tcli --version 0.2.4
+      - name: Publish to Thunderstore
+        env:
+          TCLI_AUTH_TOKEN: ${{ secrets.TCLI_AUTH_TOKEN }}
+          THUNDERSTORE_NAMESPACE: ${{ vars.THUNDERSTORE_NAMESPACE }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [[ -z "$TCLI_AUTH_TOKEN" || ! "$THUNDERSTORE_NAMESPACE" =~ ^[A-Za-z0-9_]+$ ]]; then
+            echo "::error::Set TCLI_AUTH_TOKEN and a valid THUNDERSTORE_NAMESPACE in Actions settings."
+            exit 1
+          fi
+          config="$RUNNER_TEMP/thunderstore-publish.toml"
+          printf '[package]\nnamespace = "%s"\nname = "SteadySigns"\nversionNumber = "%s"\n\n' \
+            "$THUNDERSTORE_NAMESPACE" "$VERSION" > "$config"
+          cat thunderstore.toml >> "$config"
+          "$RUNNER_TEMP/tcli/tcli" publish --config-path "$config" --file "storefront/SteadySigns-$VERSION.zip"
+
+  nexus:
+    needs: prepare
+    if: github.event_name == 'release' || inputs.destination == 'both' || inputs.destination == 'nexus'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: nexus-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: storefront-packages
+          path: storefront
+      - name: Publish to Nexus Mods
+        uses: Nexus-Mods/upload-action@98532f7670c27cbecc78fae03fa3e278147827e2 # v1.0.0-beta.11
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ vars.NEXUSMODS_FILE_ID }}
+          filename: storefront/SteadySigns-${{ needs.prepare.outputs.version }}-Nexus.zip
+          version: ${{ needs.prepare.outputs.version }}
+          display_name: Steady Signs
+          description: Shift + E edits signs and portal tags. Hold a hotbar key to mount an item or hold E to remove it.
+          update_mod_version: true

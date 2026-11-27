@@ -19,6 +19,8 @@ Install BepInExPack Valheim, then import the release ZIP as a local mod in r2mod
 
 To build against a local game installation, run `scripts/build.ps1 -ValheimDirectory 'C:/path/to/Valheim'`.
 
+[Thunderstore and Nexus publishing setup](https://github.com/jps60/valheim-steady-signs/blob/main/docs/publishing.md)
+
 ## Screenshots
 
 **Sign** · Press **Shift + E** to edit the text.
